@@ -79,10 +79,6 @@ SparseGrid advanceChunk(const SparseGrid& grid, SparseGrid::const_iterator begin
 		if (live(grid, *i)) next.push_back(*i);
 	for (Cell c : adj)
 		if (live(grid, c)) next.push_back(c);
-
-	sort(next.begin(), next.end());
-	auto last = unique(next.begin(), next.end());
-	next.erase(last, next.end());
 	return next;
 }
 

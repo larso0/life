@@ -5,6 +5,7 @@
 #include <bp/Swapchain.h>
 #include <bp/RenderPass.h>
 #include <iostream>
+#include <iomanip>
 #include <future>
 #include "CellRenderer.h"
 #include "Life.h"
@@ -47,7 +48,7 @@ int main(int argc, char** argv)
 	Device device{physical, requirements};
 
 	Swapchain target{device, window, WIDTH, HEIGHT,
-			 FlagSet<Swapchain::Flags>() << Swapchain::Flags::VERTICAL_SYNC};
+			 FlagSet<Swapchain::Flags>()}; //<< Swapchain::Flags::VERTICAL_SYNC};
 	RenderPass pass{target, {{0, 0}, {WIDTH, HEIGHT}}, {0.2f, 0.2f, 0.2f, 1.f}};
 
 	CellRenderer::Controls controls;
@@ -75,28 +76,33 @@ int main(int argc, char** argv)
 		}
 	});
 
-	SparseGrid grid;
+	SparseGrid grids[2];
 
 	if (argc < 2)
 	{
-		grid.emplace_back(5, 4);
-		grid.emplace_back(6, 5);
-		grid.emplace_back(4, 6);
-		grid.emplace_back(5, 6);
-		grid.emplace_back(6, 6);
+		grids[0].emplace_back(5, 4);
+		grids[0].emplace_back(6, 5);
+		grids[0].emplace_back(4, 6);
+		grids[0].emplace_back(5, 6);
+		grids[0].emplace_back(6, 6);
 	} else
 	{
-		loadGrid(argv[1], grid);
+		loadGrid(argv[1], grids[0]);
 	}
 
 	CellRenderer renderer{pass, controls, {0.f, 0.f}};
 
 	double seconds = glfwGetTime();
+	double frametimeAccumulator = seconds;
+	unsigned frameCounter = 0;
 	while (!glfwWindowShouldClose(window.getHandle()))
 	{
-		renderer.updateCells(grid);
+		unsigned i0 = frameCounter % 2, i1 = (i0 + 1) % 2;
+		future<void> advanceFut = async(launch::async, [&]{
+			grids[i1] = advance(grids[i0]);
+		});
+		renderer.updateCells(grids[i0]);
 		renderer.render(target.getPresentSemaphore());
-		grid = advance(grid);
 		target.present(renderer.getRenderCompleteSemaphore());
 
 		bpView::pollEvents();
@@ -105,8 +111,15 @@ int main(int argc, char** argv)
 		double time = glfwGetTime();
 		float delta = time - seconds;
 		seconds = time;
-
+		if (++frameCounter % 100 == 0)
+		{
+			double diff = time - frametimeAccumulator;
+			frametimeAccumulator = time;
+			double fps = 100.0 / diff;
+			cout << setprecision(4) << fps << "FPS" << endl;
+		}
 		renderer.update(delta);
+		advanceFut.wait();
 	}
 
 	return 0;
