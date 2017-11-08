@@ -14,7 +14,7 @@ bool operator ==(const Cell& a, const Cell& b)
 
 bool operator <(const Cell& a, const Cell& b)
 {
-	return (a.x < b.x) ? true : ((a.x == b.x) ? (a.y < b.y) : false);
+	return (a.x < b.x) || ((a.x == b.x) && (a.y < b.y));
 }
 
 std::istream& operator >>(std::istream& is, Cell& c)
