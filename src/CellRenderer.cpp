@@ -40,6 +40,14 @@ CellRenderer::~CellRenderer()
 	delete positionBuffer;
 }
 
+void CellRenderer::resize(uint32_t w, uint32_t h)
+{
+	renderPass.setRenderArea({{0, 0}, {w, h}});
+	renderPass.recreateFramebuffers();
+	float aspectRatio = static_cast<float>(w) / static_cast<float>(h);
+	camera.setPerspectiveProjection(glm::radians(45.f), aspectRatio, 0.1f, 8500.f);
+}
+
 void CellRenderer::updateCells(const SparseGrid& grid)
 {
 	VkDeviceSize requiredSize = grid.size() * sizeof(glm::ivec2);

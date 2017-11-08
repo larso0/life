@@ -20,6 +20,7 @@ public:
 	CellRenderer(bp::RenderPass& renderPass, const Controls& controls, const glm::vec2& center);
 	~CellRenderer() final;
 
+	void resize(uint32_t w, uint32_t h);
 	void updateCells(const SparseGrid& grid);
 	void update(float delta) override;
 	void draw(VkCommandBuffer cmdBuffer) override;

@@ -7,6 +7,7 @@
 #include <iostream>
 #include <iomanip>
 #include <future>
+#include <sstream>
 #include "CellRenderer.h"
 #include "Life.h"
 
@@ -30,12 +31,7 @@ int main(int argc, char** argv)
 	static const uint32_t HEIGHT = 768;
 	static const char* SWAPCHAIN_EXTENSION = "VK_KHR_swapchain";
 
-	FlagSet<Window::Flags> windowFlags;
-	windowFlags << Window::Flags::VISIBLE
-		    << Window::Flags::DECORATED
-		    << Window::Flags::AUTO_ICONIFY;
-
-	Window window{instance, WIDTH, HEIGHT, "", nullptr, windowFlags};
+	Window window{instance, WIDTH, HEIGHT, "Game of Life", nullptr};
 
 	DeviceRequirements requirements;
 	requirements.queues = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT;
@@ -48,7 +44,9 @@ int main(int argc, char** argv)
 	Device device{physical, requirements};
 
 	Swapchain target{device, window, WIDTH, HEIGHT,
-			 FlagSet<Swapchain::Flags>()}; //<< Swapchain::Flags::VERTICAL_SYNC};
+			 FlagSet<Swapchain::Flags>() << Swapchain::Flags::VERTICAL_SYNC};
+	connect(window.resizeEvent, target, &Swapchain::resize);
+
 	RenderPass pass{target, {{0, 0}, {WIDTH, HEIGHT}}, {0.2f, 0.2f, 0.2f, 1.f}};
 
 	CellRenderer::Controls controls;
@@ -88,9 +86,13 @@ int main(int argc, char** argv)
 	} else
 	{
 		loadGrid(argv[1], grids[0]);
+		stringstream ss;
+		ss << "Game of Life - " << argv[1];
+		window.setTitle(ss.str());
 	}
 
 	CellRenderer renderer{pass, controls, {0.f, 0.f}};
+	connect(window.resizeEvent, renderer, &CellRenderer::resize);
 
 	double seconds = glfwGetTime();
 	double frametimeAccumulator = seconds;
