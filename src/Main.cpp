@@ -113,12 +113,12 @@ int main(int argc, char** argv)
 		double time = glfwGetTime();
 		float delta = time - seconds;
 		seconds = time;
-		if (++frameCounter % 100 == 0)
+		if (++frameCounter % 50 == 0)
 		{
 			double diff = time - frametimeAccumulator;
 			frametimeAccumulator = time;
-			double fps = 100.0 / diff;
-			cout << setprecision(4) << fps << "FPS" << endl;
+			double fps = 50.0 / diff;
+			cout << '\r' << setprecision(4) << fps << "FPS";
 		}
 		renderer.update(delta);
 		advanceFut.wait();
