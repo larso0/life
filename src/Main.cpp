@@ -18,7 +18,13 @@ int main(int argc, char** argv)
 {
 	bpView::init();
 
-	Instance instance{true, bpView::requiredInstanceExtensions};
+#ifdef NDEBUG
+	bool debugEnabled = false;
+#else
+	bool debugEnabled = true;
+#endif
+
+	Instance instance{debugEnabled, bpView::requiredInstanceExtensions};
 	auto print = [](const string& s) { cout << s << endl; };
 	auto printErr = [](const string& s) { cerr << s << endl; };
 
