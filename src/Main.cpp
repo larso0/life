@@ -24,7 +24,12 @@ int main(int argc, char** argv)
 	bool debugEnabled = true;
 #endif
 
-	Instance instance{debugEnabled, bpView::requiredInstanceExtensions};
+	Instance instance;
+
+	instance.enableExtensions(bpView::requiredInstanceExtensions.begin(),
+				  bpView::requiredInstanceExtensions.end());
+	instance.init(debugEnabled);
+
 	auto print = [](const string& s) { cout << s << endl; };
 	auto printErr = [](const string& s) { cerr << s << endl; };
 
@@ -49,11 +54,9 @@ int main(int argc, char** argv)
 	VkPhysicalDevice physical = queryDevices(instance, requirements)[0];
 	Device device{physical, requirements};
 
-	Swapchain target{device, window, WIDTH, HEIGHT,
+	Swapchain target{&device, window, WIDTH, HEIGHT,
 			 FlagSet<Swapchain::Flags>() << Swapchain::Flags::VERTICAL_SYNC};
 	connect(window.resizeEvent, target, &Swapchain::resize);
-
-	RenderPass pass{target, {{0, 0}, {WIDTH, HEIGHT}}, {0.2f, 0.2f, 0.2f, 1.f}};
 
 	CellRenderer::Controls controls;
 
@@ -97,7 +100,7 @@ int main(int argc, char** argv)
 		window.setTitle(ss.str());
 	}
 
-	CellRenderer renderer{pass, controls, {0.f, 0.f}};
+	CellRenderer renderer{&target, &controls, {0.f, 0.f}, 8.f};
 	connect(window.resizeEvent, renderer, &CellRenderer::resize);
 
 	double seconds = glfwGetTime();

@@ -5,18 +5,35 @@
 using namespace bp;
 using namespace std;
 
-CellRenderer::CellRenderer(RenderPass& renderPass, const Controls& controls,
-			   const glm::vec2& center) :
-	Renderer(renderPass),
-	controls{controls},
-	elementCount{0},
-	zoomOut{6.f},
-	cameraPos{center, 64.f}
+CellRenderer::~CellRenderer()
 {
+	if (!isReady()) return;
+	vkDestroyPipeline(*device, pipeline, nullptr);
+	vkDestroyPipelineLayout(*device, pipelineLayout, nullptr);
+}
+
+void CellRenderer::setCamera(const glm::vec2& center, float zoomOut)
+{
+	if (zoomOut > 13.f) zoomOut = 13.f;
+	this->zoomOut = zoomOut;
+	cameraPos.z = pow(2.f, zoomOut);
+}
+
+void CellRenderer::init(bp::NotNull<bp::RenderTarget> target)
+{
+	if (isReady()) throw runtime_error("Cell renderer already initialized.");
+	this->target = target;
+	this->device = target->getDevice();
+	renderPass.setClearEnabled(true);
+	renderPass.setClearValue({0.2f, 0.2f, 0.2f, 1.f});
+	renderPass.init(target, {{0, 0}, {target->getWidth(), target->getHeight()}});
+
 	createBuffer(1024);
 	createShaders();
 	createPipelineLayout();
 	createPipeline();
+	createRenderCompleteSemaphore();
+	allocateCommandBuffer();
 
 	const auto& area = renderPass.getRenderArea();
 	float aspectRatio = static_cast<float>(area.extent.width) /
@@ -29,15 +46,41 @@ CellRenderer::CellRenderer(RenderPass& renderPass, const Controls& controls,
 	camera.update();
 }
 
-CellRenderer::~CellRenderer()
+void CellRenderer::render(VkSemaphore waitSem)
 {
-	VkDevice device = renderPass.getRenderTarget().getDevice();
-	vkDestroyPipeline(device, pipeline, nullptr);
-	vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-	delete vertexShader;
-	delete geometryShader;
-	delete fragmentShader;
-	delete positionBuffer;
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+	renderPass.getRenderTarget().beginFrame(cmdBuffer);
+	renderPass.begin(cmdBuffer);
+	draw(cmdBuffer);
+	renderPass.end(cmdBuffer);
+	renderPass.getRenderTarget().endFrame(cmdBuffer);
+
+	vkEndCommandBuffer(cmdBuffer);
+
+	VkPipelineStageFlags waitStages = {VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT};
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmdBuffer;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &renderCompleteSem;
+
+	if (waitSem != VK_NULL_HANDLE)
+	{
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &waitSem;
+	}
+
+	submitInfo.pWaitDstStageMask = &waitStages;
+
+	Queue& queue = device->getGraphicsQueue();
+	vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(queue);
 }
 
 void CellRenderer::resize(uint32_t w, uint32_t h)
@@ -71,22 +114,22 @@ void CellRenderer::updateCells(const SparseGrid& grid)
 
 void CellRenderer::update(float delta)
 {
-	if (controls.in && !controls.out)
+	if (controls->in && !controls->out)
 	{
 		zoomOut -= delta;
-		cameraPos.z = pow(2.f, zoomOut);
-	} else if (controls.out)
+	} else if (controls->out)
 	{
 		zoomOut += delta;
-		cameraPos.z = pow(2.f, zoomOut);
 	}
 	if (zoomOut > 13.f) zoomOut = 13.f;
 
-	if (controls.up && !controls.down) cameraPos.y -= delta * cameraPos.z;
-	else if (controls.down) cameraPos.y += delta * cameraPos.z;
+	cameraPos.z = pow(2.f, zoomOut);
 
-	if (controls.left && !controls.right) cameraPos.x -= delta * cameraPos.z;
-	else if (controls.right) cameraPos.x += delta * cameraPos.z;
+	if (controls->up && !controls->down) cameraPos.y -= delta * cameraPos.z;
+	else if (controls->down) cameraPos.y += delta * cameraPos.z;
+
+	if (controls->left && !controls->right) cameraPos.x -= delta * cameraPos.z;
+	else if (controls->right) cameraPos.x += delta * cameraPos.z;
 
 	cameraNode.setTranslation(cameraPos);
 	cameraNode.update();
@@ -120,34 +163,32 @@ void CellRenderer::createBuffer(VkDeviceSize size)
 {
 	positionBuffer = new Buffer(renderPass.getRenderTarget().getDevice(), size,
 				    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+				    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 }
 
 void CellRenderer::createShaders()
 {
-	VkDevice device = renderPass.getRenderTarget().getDevice();
-
 	auto vertexShaderCode = readBinaryFile("spv/cell.vert.spv");
 	auto geometryShaderCode = readBinaryFile("spv/cell.geom.spv");
 	auto fragmentShaderCode = readBinaryFile("spv/cell.frag.spv");
 
-	vertexShader = new Shader(device, VK_SHADER_STAGE_VERTEX_BIT,
-				  (uint32_t) vertexShaderCode.size(),
-				  (const uint32_t*) vertexShaderCode.data());
+	vertexShader.init(device, VK_SHADER_STAGE_VERTEX_BIT,
+			  (uint32_t) vertexShaderCode.size(),
+			  (const uint32_t*) vertexShaderCode.data());
 
-	geometryShader = new Shader(device, VK_SHADER_STAGE_GEOMETRY_BIT,
-				    (uint32_t) geometryShaderCode.size(),
-				    (const uint32_t*) geometryShaderCode.data());
+	geometryShader.init(device, VK_SHADER_STAGE_GEOMETRY_BIT,
+			    (uint32_t) geometryShaderCode.size(),
+			    (const uint32_t*) geometryShaderCode.data());
 
-	fragmentShader = new Shader(device, VK_SHADER_STAGE_FRAGMENT_BIT,
-				    (uint32_t) fragmentShaderCode.size(),
-				    (const uint32_t*) fragmentShaderCode.data());
+	fragmentShader.init(device, VK_SHADER_STAGE_FRAGMENT_BIT,
+			    (uint32_t) fragmentShaderCode.size(),
+			    (const uint32_t*) fragmentShaderCode.data());
 }
 
 void CellRenderer::createPipelineLayout()
 {
-	VkDevice device = renderPass.getRenderTarget().getDevice();
-
 	//Vulkan promises at leas 128 bytes for push constant. Enough for mvp and normal
 	//pushConstants.
 	VkPushConstantRange pushConstantRange = {VK_SHADER_STAGE_GEOMETRY_BIT, 0, 128};
@@ -158,19 +199,17 @@ void CellRenderer::createPipelineLayout()
 	layoutInfo.pushConstantRangeCount = 1;
 	layoutInfo.pPushConstantRanges = &pushConstantRange;
 
-	VkResult result = vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout);
+	VkResult result = vkCreatePipelineLayout(*device, &layoutInfo, nullptr, &pipelineLayout);
 	if (result != VK_SUCCESS)
 		throw runtime_error("Failed to create pipeline layout.");
 }
 
 void CellRenderer::createPipeline()
 {
-	VkDevice device = renderPass.getRenderTarget().getDevice();
-
 	vector<VkPipelineShaderStageCreateInfo> shaderStages;
-	shaderStages.push_back(vertexShader->getPipelineShaderStageInfo());
-	shaderStages.push_back(geometryShader->getPipelineShaderStageInfo());
-	shaderStages.push_back(fragmentShader->getPipelineShaderStageInfo());
+	shaderStages.push_back(vertexShader.getPipelineShaderStageInfo());
+	shaderStages.push_back(geometryShader.getPipelineShaderStageInfo());
+	shaderStages.push_back(fragmentShader.getPipelineShaderStageInfo());
 
 	VkVertexInputBindingDescription vertexBindingDescription;
 
@@ -305,8 +344,29 @@ void CellRenderer::createPipeline()
 	pipelineCreateInfo.basePipelineHandle = nullptr;
 	pipelineCreateInfo.basePipelineIndex = 0;
 
-	VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo,
+	VkResult result = vkCreateGraphicsPipelines(*device, VK_NULL_HANDLE, 1, &pipelineCreateInfo,
 					   nullptr, &pipeline);
 	if (result != VK_SUCCESS)
 		throw runtime_error("Failed to create pipeline.");
+}
+
+void CellRenderer::createRenderCompleteSemaphore()
+{
+	VkSemaphoreCreateInfo semInfo = {};
+	semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	VkResult result = vkCreateSemaphore(*device, &semInfo, nullptr, &renderCompleteSem);
+	if (result != VK_SUCCESS)
+		throw runtime_error("Failed to create render complete semaphore.");
+}
+
+void CellRenderer::allocateCommandBuffer()
+{
+	VkCommandBufferAllocateInfo cmdBufferInfo = {};
+	cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdBufferInfo.commandPool = target->getCmdPool();
+	cmdBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdBufferInfo.commandBufferCount = 1;
+	VkResult result = vkAllocateCommandBuffers(*device, &cmdBufferInfo, &cmdBuffer);
+	if (result != VK_SUCCESS)
+		throw runtime_error("Failed to allocate command buffer.");
 }
