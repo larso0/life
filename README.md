@@ -1,2 +1,2 @@
 # life
-Game of Life
+Application that simulates Game of Life. The renderer is implemented in vulkan API and depends on my library [bp](https://github.com/larso0/bp). The universe of cells is represented by a sparse matrix (vector of points) that represents the live cells. The universe is advanced to the next generation by applying the rules of Game of Life to all cells in the sparse matrix as well as neighbouring dead cells. This is done in parallel on the CPU.
