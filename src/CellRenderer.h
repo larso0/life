@@ -21,8 +21,6 @@ public:
 	CellRenderer() :
 		target{nullptr},
 		device{nullptr},
-		renderCompleteSem{VK_NULL_HANDLE},
-		cmdBuffer{VK_NULL_HANDLE},
 		controls{nullptr},
 		positionBuffer{nullptr},
 		elementCount{0},
@@ -34,7 +32,7 @@ public:
 	{
 		setControls(controls);
 		setCamera(center, zoomOut);
-		init(target);
+		init(target, {{0, 0}, {target->getWidth(), target->getHeight()}});
 	}
 	~CellRenderer() final;
 
@@ -43,22 +41,19 @@ public:
 		this->controls = controls;
 	}
 	void setCamera(const glm::vec2& center, float zoomOut);
-	void init(bp::NotNull<bp::RenderTarget> target) override;
-	void render(VkSemaphore waitSem = VK_NULL_HANDLE) override;
+	void init(bp::NotNull<bp::RenderTarget> target, const VkRect2D& area) override;
+	void render(VkCommandBuffer cmdBuffer) override;
 	void resize(uint32_t w, uint32_t h);
 	void updateCells(const SparseGrid& grid);
-	void update(float delta) override;
+	void update(float delta);
 	void draw(VkCommandBuffer cmdBuffer);
 
-	VkSemaphore getRenderCompleteSemaphore() override { return renderCompleteSem; }
 	bool isReady() const { return pipeline != VK_NULL_HANDLE; }
 
 private:
 	bp::RenderTarget* target;
 	bp::Device* device;
 	bp::RenderPass renderPass;
-	VkSemaphore renderCompleteSem;
-	VkCommandBuffer cmdBuffer;
 
 	Controls* controls;
 	bp::Buffer* positionBuffer;
@@ -78,8 +73,6 @@ private:
 	void createShaders();
 	void createPipelineLayout();
 	void createPipeline();
-	void createRenderCompleteSemaphore();
-	void allocateCommandBuffer();
 };
 
 

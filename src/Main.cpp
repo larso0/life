@@ -103,6 +103,41 @@ int main(int argc, char** argv)
 	CellRenderer renderer{&target, &controls, {0.f, 0.f}, 8.f};
 	connect(window.resizeEvent, renderer, &CellRenderer::resize);
 
+	VkCommandBuffer cmdBuffer;
+	VkCommandBufferAllocateInfo cmdBufferInfo = {};
+	cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdBufferInfo.commandPool = target.getCmdPool();
+	cmdBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdBufferInfo.commandBufferCount = 1;
+	VkResult result = vkAllocateCommandBuffers(device, &cmdBufferInfo, &cmdBuffer);
+	if (result != VK_SUCCESS)
+		throw runtime_error("Failed to allocate command buffer.");
+
+	VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
+	cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	VkSemaphore renderCompleteSem;
+	VkSemaphoreCreateInfo semInfo = {};
+	semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	result = vkCreateSemaphore(device, &semInfo, nullptr, &renderCompleteSem);
+	if (result != VK_SUCCESS)
+		throw runtime_error("Failed to create render complete semaphore.");
+
+	VkSemaphore presentSem = target.getPresentSemaphore();
+	VkPipelineStageFlags waitStages = {VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT};
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmdBuffer;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &renderCompleteSem;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &presentSem;
+	submitInfo.pWaitDstStageMask = &waitStages;
+
+	Queue& graphicsQueue = device.getGraphicsQueue();
+
 	double seconds = glfwGetTime();
 	double frametimeAccumulator = seconds;
 	unsigned frameCounter = 0;
@@ -113,8 +148,15 @@ int main(int argc, char** argv)
 			grids[i1] = advance(grids[i0]);
 		});
 		renderer.updateCells(grids[i0]);
-		renderer.render(target.getPresentSemaphore());
-		target.present(renderer.getRenderCompleteSemaphore());
+
+		vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
+		target.beginFrame(cmdBuffer);
+		renderer.render(cmdBuffer);
+		target.endFrame(cmdBuffer);
+		vkEndCommandBuffer(cmdBuffer);
+		vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(graphicsQueue);
+		target.present(renderCompleteSem);
 
 		bpView::pollEvents();
 		window.handleEvents();

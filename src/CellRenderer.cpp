@@ -19,23 +19,20 @@ void CellRenderer::setCamera(const glm::vec2& center, float zoomOut)
 	cameraPos.z = pow(2.f, zoomOut);
 }
 
-void CellRenderer::init(bp::NotNull<bp::RenderTarget> target)
+void CellRenderer::init(bp::NotNull<bp::RenderTarget> target, const VkRect2D& area)
 {
 	if (isReady()) throw runtime_error("Cell renderer already initialized.");
 	this->target = target;
 	this->device = target->getDevice();
 	renderPass.setClearEnabled(true);
 	renderPass.setClearValue({0.2f, 0.2f, 0.2f, 1.f});
-	renderPass.init(target, {{0, 0}, {target->getWidth(), target->getHeight()}});
+	renderPass.init(target, area);
 
 	createBuffer(1024);
 	createShaders();
 	createPipelineLayout();
 	createPipeline();
-	createRenderCompleteSemaphore();
-	allocateCommandBuffer();
 
-	const auto& area = renderPass.getRenderArea();
 	float aspectRatio = static_cast<float>(area.extent.width) /
 			    static_cast<float>(area.extent.height);
 
@@ -46,41 +43,11 @@ void CellRenderer::init(bp::NotNull<bp::RenderTarget> target)
 	camera.update();
 }
 
-void CellRenderer::render(VkSemaphore waitSem)
+void CellRenderer::render(VkCommandBuffer cmdBuffer)
 {
-	VkCommandBufferBeginInfo beginInfo = {};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-	vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-
-	renderPass.getRenderTarget().beginFrame(cmdBuffer);
 	renderPass.begin(cmdBuffer);
 	draw(cmdBuffer);
 	renderPass.end(cmdBuffer);
-	renderPass.getRenderTarget().endFrame(cmdBuffer);
-
-	vkEndCommandBuffer(cmdBuffer);
-
-	VkPipelineStageFlags waitStages = {VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT};
-	VkSubmitInfo submitInfo = {};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &cmdBuffer;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderCompleteSem;
-
-	if (waitSem != VK_NULL_HANDLE)
-	{
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &waitSem;
-	}
-
-	submitInfo.pWaitDstStageMask = &waitStages;
-
-	Queue& queue = device->getGraphicsQueue();
-	vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
-	vkQueueWaitIdle(queue);
 }
 
 void CellRenderer::resize(uint32_t w, uint32_t h)
@@ -348,25 +315,4 @@ void CellRenderer::createPipeline()
 					   nullptr, &pipeline);
 	if (result != VK_SUCCESS)
 		throw runtime_error("Failed to create pipeline.");
-}
-
-void CellRenderer::createRenderCompleteSemaphore()
-{
-	VkSemaphoreCreateInfo semInfo = {};
-	semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-	VkResult result = vkCreateSemaphore(*device, &semInfo, nullptr, &renderCompleteSem);
-	if (result != VK_SUCCESS)
-		throw runtime_error("Failed to create render complete semaphore.");
-}
-
-void CellRenderer::allocateCommandBuffer()
-{
-	VkCommandBufferAllocateInfo cmdBufferInfo = {};
-	cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	cmdBufferInfo.commandPool = target->getCmdPool();
-	cmdBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	cmdBufferInfo.commandBufferCount = 1;
-	VkResult result = vkAllocateCommandBuffers(*device, &cmdBufferInfo, &cmdBuffer);
-	if (result != VK_SUCCESS)
-		throw runtime_error("Failed to allocate command buffer.");
 }
