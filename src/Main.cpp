@@ -175,5 +175,7 @@ int main(int argc, char** argv)
 		advanceFut.wait();
 	}
 
+	vkDestroySemaphore(device, renderCompleteSem, nullptr);
+
 	return 0;
 }
