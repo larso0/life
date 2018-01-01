@@ -54,9 +54,10 @@ int main(int argc, char** argv)
 	VkPhysicalDevice physical = queryDevices(instance, requirements)[0];
 	Device device{physical, requirements};
 
-	Swapchain target{&device, window, WIDTH, HEIGHT,
-			 FlagSet<Swapchain::Flags>() << Swapchain::Flags::VERTICAL_SYNC};
-	connect(window.resizeEvent, target, &Swapchain::resize);
+	Swapchain target;
+	target.setClearEnabled(true);
+	target.setClearValue({0.2f, 0.2f, 0.2f, 1.f});
+	target.init(&device, window, WIDTH, HEIGHT, true);
 
 	CellRenderer::Controls controls;
 
@@ -100,16 +101,49 @@ int main(int argc, char** argv)
 		window.setTitle(ss.str());
 	}
 
-	CellRenderer renderer{&target, &controls, {0.f, 0.f}, 8.f};
-	connect(window.resizeEvent, renderer, &CellRenderer::resize);
+	DepthAttachment depthAttachment;
+	depthAttachment.setClearEnabled(true);
+	depthAttachment.setClearValue({1.f, 0.f});
+	depthAttachment.init(&device, WIDTH, HEIGHT);
+
+	CellRenderer renderer;
+	renderer.addColorAttachment(&target);
+	renderer.setDepthAttachment(&depthAttachment);
+	renderer.setCamera({0.f, 0.f}, 8.f);
+	renderer.setControls(&controls);
+
+	RenderPass renderPass;
+	renderPass.addSubpassGraph(&renderer);
+	renderPass.setRenderArea({{}, {WIDTH, HEIGHT}});
+	renderPass.init(WIDTH, HEIGHT);
+
+	connect(window.resizeEvent, [&](uint32_t w, uint32_t h)
+	{
+		target.resize(w, h);
+		depthAttachment.resize(w, h);
+		renderer.resize(w, h);
+		renderPass.resize(w, h);
+		renderPass.setRenderArea({{}, {w, h}});
+	});
+
+	Queue& graphicsQueue = device.getGraphicsQueue();
+
+	VkCommandPool cmdPool;
+	VkCommandPoolCreateInfo poolInfo = {};
+	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	poolInfo.queueFamilyIndex = graphicsQueue.getQueueFamilyIndex();
+	VkResult result = vkCreateCommandPool(device, &poolInfo, nullptr, &cmdPool);
+	if (result != VK_SUCCESS)
+		throw runtime_error("Failed to create command pool.");
 
 	VkCommandBuffer cmdBuffer;
 	VkCommandBufferAllocateInfo cmdBufferInfo = {};
 	cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	cmdBufferInfo.commandPool = target.getCmdPool();
+	cmdBufferInfo.commandPool = cmdPool;
 	cmdBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	cmdBufferInfo.commandBufferCount = 1;
-	VkResult result = vkAllocateCommandBuffers(device, &cmdBufferInfo, &cmdBuffer);
+	result = vkAllocateCommandBuffers(device, &cmdBufferInfo, &cmdBuffer);
 	if (result != VK_SUCCESS)
 		throw runtime_error("Failed to allocate command buffer.");
 
@@ -136,8 +170,6 @@ int main(int argc, char** argv)
 	submitInfo.pWaitSemaphores = &presentSem;
 	submitInfo.pWaitDstStageMask = &waitStages;
 
-	Queue& graphicsQueue = device.getGraphicsQueue();
-
 	double seconds = glfwGetTime();
 	double frametimeAccumulator = seconds;
 	unsigned frameCounter = 0;
@@ -150,9 +182,7 @@ int main(int argc, char** argv)
 		renderer.updateCells(grids[i0]);
 
 		vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
-		target.beginFrame(cmdBuffer);
-		renderer.render(cmdBuffer);
-		target.endFrame(cmdBuffer);
+		renderPass.render(cmdBuffer);
 		vkEndCommandBuffer(cmdBuffer);
 		vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
 		vkQueueWaitIdle(graphicsQueue);
@@ -176,6 +206,7 @@ int main(int argc, char** argv)
 	}
 
 	vkDestroySemaphore(device, renderCompleteSem, nullptr);
+	vkDestroyCommandPool(device, cmdPool, nullptr);
 
 	return 0;
 }

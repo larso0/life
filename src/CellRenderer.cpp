@@ -7,8 +7,7 @@ using namespace std;
 
 CellRenderer::~CellRenderer()
 {
-	if (!isReady()) return;
-	if (positionBuffer != nullptr) delete positionBuffer;
+	delete positionBuffer;
 }
 
 void CellRenderer::setCamera(const glm::vec2& center, float zoomOut)
@@ -18,20 +17,17 @@ void CellRenderer::setCamera(const glm::vec2& center, float zoomOut)
 	cameraPos.z = pow(2.f, zoomOut);
 }
 
-void CellRenderer::init(bp::NotNull<bp::RenderTarget> target, const VkRect2D& area)
+void CellRenderer::init(bp::NotNull<bp::RenderPass> renderPass)
 {
 	if (isReady()) throw runtime_error("Cell renderer already initialized.");
-	this->target = target;
-	this->device = target->getDevice();
-	renderPass.setClearEnabled(true);
-	renderPass.setClearValue({0.2f, 0.2f, 0.2f, 1.f});
-	renderPass.init(target, area);
+	this->renderPass = renderPass;
 
 	createBuffer(1024);
 	createShaders();
 	createPipelineLayout();
 	createPipeline();
 
+	const VkRect2D& area = renderPass->getRenderArea();
 	float aspectRatio = static_cast<float>(area.extent.width) /
 			    static_cast<float>(area.extent.height);
 
@@ -44,15 +40,29 @@ void CellRenderer::init(bp::NotNull<bp::RenderTarget> target, const VkRect2D& ar
 
 void CellRenderer::render(VkCommandBuffer cmdBuffer)
 {
-	renderPass.begin(cmdBuffer);
-	draw(cmdBuffer);
-	renderPass.end(cmdBuffer);
+	if (elementCount == 0) return;
+
+	vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+	VkRect2D area = renderPass->getRenderArea();
+	VkViewport viewport = {(float) area.offset.x, (float) area.offset.y,
+			       (float) area.extent.width, (float) area.extent.height, 0.f, 1.f};
+	vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+	vkCmdSetScissor(cmdBuffer, 0, 1, &area);
+
+	glm::mat4 mvp = camera.getProjectionMatrix() * camera.getViewMatrix();
+	vkCmdPushConstants(cmdBuffer, pipelineLayout, VK_SHADER_STAGE_GEOMETRY_BIT, 0,
+			   sizeof(glm::mat4), &mvp);
+
+	VkDeviceSize offset = 0;
+	VkBuffer vertexBuffer = positionBuffer->getHandle();
+	vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, &offset);
+
+	vkCmdDraw(cmdBuffer, elementCount, 1, 0, 0);
 }
 
 void CellRenderer::resize(uint32_t w, uint32_t h)
 {
-	renderPass.setRenderArea({{0, 0}, {w, h}});
-	renderPass.recreateFramebuffers();
 	float aspectRatio = static_cast<float>(w) / static_cast<float>(h);
 	camera.setPerspectiveProjection(glm::radians(45.f), aspectRatio, 0.1f, 8500.f);
 }
@@ -102,33 +112,9 @@ void CellRenderer::update(float delta)
 	camera.update();
 }
 
-void CellRenderer::draw(VkCommandBuffer cmdBuffer)
-{
-	if (elementCount == 0) return;
-
-	vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-
-	const VkRect2D& area = renderPass.getRenderArea();
-	VkViewport viewport = {(float) area.offset.x, (float) area.offset.y,
-			       (float) area.extent.width, (float) area.extent.height, 0.f, 1.f};
-	vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
-	vkCmdSetScissor(cmdBuffer, 0, 1, &area);
-
-	glm::mat4 mvp = camera.getProjectionMatrix() * camera.getViewMatrix();
-	vkCmdPushConstants(cmdBuffer, pipelineLayout, VK_SHADER_STAGE_GEOMETRY_BIT, 0,
-			   sizeof(glm::mat4), &mvp);
-
-	VkDeviceSize offset = 0;
-	VkBuffer vertexBuffer = positionBuffer->getHandle();
-	vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, &offset);
-
-	vkCmdDraw(cmdBuffer, elementCount, 1, 0, 0);
-}
-
 void CellRenderer::createBuffer(VkDeviceSize size)
 {
-	positionBuffer = new Buffer(renderPass.getRenderTarget().getDevice(), size,
-				    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+	positionBuffer = new Buffer(device, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
 				    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
@@ -167,5 +153,5 @@ void CellRenderer::createPipeline()
 	pipeline.addVertexBindingDescription({0, sizeof(glm::ivec2), VK_VERTEX_INPUT_RATE_VERTEX});
 	pipeline.addVertexAttributeDescription({0, 0, VK_FORMAT_R32G32_SINT, 0});
 	pipeline.setPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
-	pipeline.init(device, &renderPass, pipelineLayout);
+	pipeline.init(device, renderPass, pipelineLayout);
 }
