@@ -59,7 +59,7 @@ int main(int argc, char** argv)
 	Swapchain target;
 	target.setClearEnabled(true);
 	target.setClearValue({0.2f, 0.2f, 0.2f, 1.f});
-	target.init(&device, window, WIDTH, HEIGHT, true);
+	target.init(device, window, WIDTH, HEIGHT, true);
 
 	CellRenderer::Controls controls;
 
@@ -106,16 +106,16 @@ int main(int argc, char** argv)
 	DepthAttachment depthAttachment;
 	depthAttachment.setClearEnabled(true);
 	depthAttachment.setClearValue({1.f, 0.f});
-	depthAttachment.init(&device, WIDTH, HEIGHT);
+	depthAttachment.init(device, WIDTH, HEIGHT);
 
 	CellRenderer renderer;
-	renderer.addColorAttachment(&target);
-	renderer.setDepthAttachment(&depthAttachment);
+	renderer.addColorAttachment(target);
+	renderer.setDepthAttachment(depthAttachment);
 	renderer.setCamera({0.f, 0.f}, 8.f);
-	renderer.setControls(&controls);
+	renderer.setControls(controls);
 
 	RenderPass renderPass;
-	renderPass.addSubpassGraph(&renderer);
+	renderPass.addSubpassGraph(renderer);
 	renderPass.setRenderArea({{}, {WIDTH, HEIGHT}});
 	renderPass.init(WIDTH, HEIGHT);
 
@@ -128,7 +128,7 @@ int main(int argc, char** argv)
 		renderPass.setRenderArea({{}, {w, h}});
 	});
 
-	Queue* graphicsQueue = device.getGraphicsQueue();
+	Queue& graphicsQueue = device.getGraphicsQueue();
 	CommandPool cmdPool{graphicsQueue};
 	Semaphore renderCompleteSem{device};
 

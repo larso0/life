@@ -13,21 +13,21 @@ CellRenderer::~CellRenderer()
 void CellRenderer::setCamera(const glm::vec2& center, float zoomOut)
 {
 	if (zoomOut > 13.f) zoomOut = 13.f;
-	this->zoomOut = zoomOut;
+	CellRenderer::zoomOut = zoomOut;
 	cameraPos.z = pow(2.f, zoomOut);
 }
 
-void CellRenderer::init(bp::NotNull<bp::RenderPass> renderPass)
+void CellRenderer::init(RenderPass& renderPass)
 {
 	if (isReady()) throw runtime_error("Cell renderer already initialized.");
-	this->renderPass = renderPass;
+	CellRenderer::renderPass = &renderPass;
 
 	createBuffer(1024);
 	createShaders();
 	createPipelineLayout();
 	createPipeline();
 
-	const VkRect2D& area = renderPass->getRenderArea();
+	const VkRect2D& area = renderPass.getRenderArea();
 	float aspectRatio = static_cast<float>(area.extent.width) /
 			    static_cast<float>(area.extent.height);
 
@@ -114,7 +114,7 @@ void CellRenderer::update(float delta)
 
 void CellRenderer::createBuffer(VkDeviceSize size)
 {
-	positionBuffer = new Buffer(device, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+	positionBuffer = new Buffer(*device, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
 				    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
@@ -126,15 +126,15 @@ void CellRenderer::createShaders()
 	auto geometryShaderCode = readBinaryFile("spv/cell.geom.spv");
 	auto fragmentShaderCode = readBinaryFile("spv/cell.frag.spv");
 
-	vertexShader.init(device, VK_SHADER_STAGE_VERTEX_BIT,
+	vertexShader.init(*device, VK_SHADER_STAGE_VERTEX_BIT,
 			  (uint32_t) vertexShaderCode.size(),
 			  (const uint32_t*) vertexShaderCode.data());
 
-	geometryShader.init(device, VK_SHADER_STAGE_GEOMETRY_BIT,
+	geometryShader.init(*device, VK_SHADER_STAGE_GEOMETRY_BIT,
 			    (uint32_t) geometryShaderCode.size(),
 			    (const uint32_t*) geometryShaderCode.data());
 
-	fragmentShader.init(device, VK_SHADER_STAGE_FRAGMENT_BIT,
+	fragmentShader.init(*device, VK_SHADER_STAGE_FRAGMENT_BIT,
 			    (uint32_t) fragmentShaderCode.size(),
 			    (const uint32_t*) fragmentShaderCode.data());
 }
@@ -142,7 +142,7 @@ void CellRenderer::createShaders()
 void CellRenderer::createPipelineLayout()
 {
 	pipelineLayout.addPushConstantRange({VK_SHADER_STAGE_GEOMETRY_BIT, 0, 128});
-	pipelineLayout.init(device);
+	pipelineLayout.init(*device);
 }
 
 void CellRenderer::createPipeline()
@@ -153,5 +153,5 @@ void CellRenderer::createPipeline()
 	pipeline.addVertexBindingDescription({0, sizeof(glm::ivec2), VK_VERTEX_INPUT_RATE_VERTEX});
 	pipeline.addVertexAttributeDescription({0, 0, VK_FORMAT_R32G32_SINT, 0});
 	pipeline.setPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
-	pipeline.init(device, renderPass, pipelineLayout);
+	pipeline.init(*device, *renderPass, pipelineLayout);
 }

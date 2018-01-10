@@ -24,7 +24,7 @@ public:
 		controls{nullptr},
 		positionBuffer{nullptr},
 		elementCount{0} {}
-	CellRenderer(bp::NotNull<bp::RenderPass> renderPass, bp::NotNull<Controls> controls,
+	CellRenderer(bp::RenderPass& renderPass, Controls& controls,
 		     const glm::vec2& center, float zoomOut) :
 		CellRenderer{}
 	{
@@ -34,12 +34,12 @@ public:
 	}
 	~CellRenderer() final;
 
-	void setControls(bp::NotNull<Controls> controls)
+	void setControls(Controls& controls)
 	{
-		this->controls = controls;
+		CellRenderer::controls = &controls;
 	}
 	void setCamera(const glm::vec2& center, float zoomOut);
-	void init(bp::NotNull<bp::RenderPass> renderPass) override;
+	void init(bp::RenderPass& renderPass) override;
 	void render(VkCommandBuffer cmdBuffer) override;
 	void resize(uint32_t w, uint32_t h);
 	void updateCells(const SparseGrid& grid);
