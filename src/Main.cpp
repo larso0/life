@@ -103,14 +103,8 @@ int main(int argc, char** argv)
 		window.setTitle(ss.str());
 	}
 
-	DepthAttachment depthAttachment;
-	depthAttachment.setClearEnabled(true);
-	depthAttachment.setClearValue({1.f, 0.f});
-	depthAttachment.init(device, WIDTH, HEIGHT);
-
 	CellRenderer renderer;
 	renderer.addColorAttachment(target);
-	renderer.setDepthAttachment(depthAttachment);
 	renderer.setCamera({0.f, 0.f}, 8.f);
 	renderer.setControls(controls);
 
@@ -122,7 +116,6 @@ int main(int argc, char** argv)
 	connect(window.resizeEvent, [&](uint32_t w, uint32_t h)
 	{
 		target.resize(w, h);
-		depthAttachment.resize(w, h);
 		renderer.resize(w, h);
 		renderPass.resize(w, h);
 		renderPass.setRenderArea({{}, {w, h}});
