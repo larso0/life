@@ -162,7 +162,7 @@ int main(int argc, char** argv)
 			double diff = time - frametimeAccumulator;
 			frametimeAccumulator = time;
 			double fps = 50.0 / diff;
-			cout << '\r' << setprecision(4) << fps << "FPS";
+			cout << '\r' << setprecision(4) << fps << "FPS" << flush;
 		}
 		renderer.update(delta);
 		advanceFut.wait();
