@@ -113,11 +113,9 @@ int main(int argc, char** argv)
 	renderPass.setRenderArea({{}, {WIDTH, HEIGHT}});
 	renderPass.init(WIDTH, HEIGHT);
 
-	connect(window.resizeEvent, [&](uint32_t w, uint32_t h)
-	{
-		target.resize(w, h);
+	connect(window.resizeEvent, target, &Swapchain::resize);
+	connect(target.resizeEvent, [&](uint32_t w, uint32_t h){
 		renderer.resize(w, h);
-		renderPass.resize(w, h);
 		renderPass.setRenderArea({{}, {w, h}});
 	});
 
