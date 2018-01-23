@@ -145,10 +145,10 @@ int main(int argc, char** argv)
 		vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
 		renderPass.render(cmdBuffer);
 		vkEndCommandBuffer(cmdBuffer);
-		cmdPool.submit(
+		graphicsQueue.submit(
 			{{target.getPresentSemaphore(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT}},
 			{cmdBuffer}, {renderCompleteSem});
-		cmdPool.waitQueueIdle();
+		graphicsQueue.waitIdle();
 		target.present(renderCompleteSem);
 
 		bpView::pollEvents();
