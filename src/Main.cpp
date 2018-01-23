@@ -146,7 +146,7 @@ int main(int argc, char** argv)
 		renderPass.render(cmdBuffer);
 		vkEndCommandBuffer(cmdBuffer);
 		graphicsQueue.submit(
-			{{target.getPresentSemaphore(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT}},
+			{{target.getImageAvailableSemaphore(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT}},
 			{cmdBuffer}, {renderCompleteSem});
 		graphicsQueue.waitIdle();
 		target.present(renderCompleteSem);
