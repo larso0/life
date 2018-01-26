@@ -14,6 +14,8 @@
 #include "Life.h"
 
 using namespace bp;
+using namespace bpView;
+using namespace bpUtil;
 using namespace std;
 
 int main(int argc, char** argv)
