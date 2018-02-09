@@ -78,12 +78,12 @@ void CellRenderer::updateCells(const SparseGrid& grid)
 		createBuffer(newSize);
 	}
 
-	glm::ivec2* mapped = static_cast<glm::ivec2*>(positionBuffer->map(0, VK_WHOLE_SIZE));
+	glm::ivec2* mapped = static_cast<glm::ivec2*>(positionBuffer->map());
 
 	for (auto i = 0; i < grid.size(); i++)
 		mapped[i] = glm::ivec2(grid[i].x, grid[i].y);
 
-	positionBuffer->unmap();
+	positionBuffer->flushStagingBuffer();
 
 	elementCount = grid.size();
 }
@@ -115,9 +115,7 @@ void CellRenderer::update(float delta)
 void CellRenderer::createBuffer(VkDeviceSize size)
 {
 	positionBuffer = new Buffer(*device, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-				    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+				    VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
 void CellRenderer::createShaders()
