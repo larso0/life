@@ -1,6 +1,8 @@
 #ifndef LIFE_CELLRENDERER_H
 #define LIFE_CELLRENDERER_H
 
+#include <bp/Device.h>
+#include <bp/RenderPass.h>
 #include <bp/Subpass.h>
 #include <bp/Buffer.h>
 #include <bp/Shader.h>
@@ -20,17 +22,15 @@ public:
 	};
 
 	CellRenderer() :
-		renderPass{nullptr},
+		device{nullptr},
 		controls{nullptr},
 		positionBuffer{nullptr},
 		elementCount{0} {}
-	CellRenderer(bp::RenderPass& renderPass, Controls& controls,
-		     const glm::vec2& center, float zoomOut) :
+	CellRenderer(bp::Device& device, Controls& controls, const glm::vec2& center, float zoomOut,
+		     bp::RenderPass& renderPass) :
 		CellRenderer{}
 	{
-		setControls(controls);
-		setCamera(center, zoomOut);
-		init(renderPass);
+		init(device, controls, center, zoomOut, renderPass);
 	}
 	~CellRenderer() final;
 
@@ -39,8 +39,9 @@ public:
 		CellRenderer::controls = &controls;
 	}
 	void setCamera(const glm::vec2& center, float zoomOut);
-	void init(bp::RenderPass& renderPass) override;
-	void render(VkCommandBuffer cmdBuffer) override;
+	void init(bp::Device& device, Controls& controls, const glm::vec2& center, float zoomOut,
+		  bp::RenderPass& renderPass);
+	void render(const VkRect2D& area, VkCommandBuffer cmdBuffer) override;
 	void resize(uint32_t w, uint32_t h);
 	void updateCells(const SparseGrid& grid);
 	void update(float delta);
@@ -48,7 +49,7 @@ public:
 	bool isReady() const { return pipeline.isReady(); }
 
 private:
-	bp::RenderPass* renderPass;
+	bp::Device* device;
 
 	Controls* controls;
 	bp::Buffer* positionBuffer;
@@ -67,7 +68,7 @@ private:
 	void createBuffer(VkDeviceSize size);
 	void createShaders();
 	void createPipelineLayout();
-	void createPipeline();
+	void createPipeline(bp::RenderPass& renderPass);
 };
 
 

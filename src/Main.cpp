@@ -4,6 +4,7 @@
 #include <bp/Device.h>
 #include <bp/Swapchain.h>
 #include <bp/RenderPass.h>
+#include <bp/Framebuffer.h>
 #include <bp/CommandPool.h>
 #include <bp/Semaphore.h>
 #include <iostream>
@@ -105,20 +106,31 @@ int main(int argc, char** argv)
 		window.setTitle(ss.str());
 	}
 
+	AttachmentSlot colorAttachmentSlot{target.getFormat(), VK_SAMPLE_COUNT_1_BIT,
+					   VK_ATTACHMENT_LOAD_OP_CLEAR,
+					   VK_ATTACHMENT_STORE_OP_STORE,
+					   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+					   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+
 	CellRenderer renderer;
-	renderer.addColorAttachment(target);
-	renderer.setCamera({0.f, 0.f}, 8.f);
-	renderer.setControls(controls);
+	renderer.addColorAttachment(colorAttachmentSlot);
 
 	RenderPass renderPass;
 	renderPass.addSubpassGraph(renderer);
 	renderPass.setRenderArea({{}, {WIDTH, HEIGHT}});
-	renderPass.init(WIDTH, HEIGHT);
+	renderPass.init(device);
+
+	renderer.init(device, controls, {0.f, 0.f}, 8.f, renderPass);
+
+	Framebuffer framebuffer{};
+	framebuffer.setAttachment(colorAttachmentSlot, target);
+	framebuffer.init(renderPass, WIDTH, HEIGHT);
 
 	connect(window.resizeEvent, target, &Swapchain::resize);
 	connect(target.resizeEvent, [&](uint32_t w, uint32_t h){
 		renderer.resize(w, h);
 		renderPass.setRenderArea({{}, {w, h}});
+		framebuffer.resize(w, h);
 	});
 
 	Queue& graphicsQueue = device.getGraphicsQueue();
@@ -143,7 +155,7 @@ int main(int argc, char** argv)
 		renderer.updateCells(grids[i0]);
 
 		vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
-		renderPass.render(cmdBuffer);
+		renderPass.render(framebuffer, cmdBuffer);
 		vkEndCommandBuffer(cmdBuffer);
 		graphicsQueue.submit(
 			{{target.getImageAvailableSemaphore(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT}},

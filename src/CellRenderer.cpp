@@ -17,15 +17,18 @@ void CellRenderer::setCamera(const glm::vec2& center, float zoomOut)
 	cameraPos.z = pow(2.f, zoomOut);
 }
 
-void CellRenderer::init(RenderPass& renderPass)
+void CellRenderer::init(bp::Device& device, Controls& controls, const glm::vec2& center,
+			float zoomOut, bp::RenderPass& renderPass)
 {
 	if (isReady()) throw runtime_error("Cell renderer already initialized.");
-	CellRenderer::renderPass = &renderPass;
+	CellRenderer::device = &device;
+	CellRenderer::controls = &controls;
+	setCamera(center, zoomOut);
 
 	createBuffer(1024);
 	createShaders();
 	createPipelineLayout();
-	createPipeline();
+	createPipeline(renderPass);
 
 	const VkRect2D& area = renderPass.getRenderArea();
 	float aspectRatio = static_cast<float>(area.extent.width) /
@@ -38,13 +41,12 @@ void CellRenderer::init(RenderPass& renderPass)
 	camera.update();
 }
 
-void CellRenderer::render(VkCommandBuffer cmdBuffer)
+void CellRenderer::render(const VkRect2D& area, VkCommandBuffer cmdBuffer)
 {
 	if (elementCount == 0) return;
 
 	vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-	VkRect2D area = renderPass->getRenderArea();
 	VkViewport viewport = {(float) area.offset.x, (float) area.offset.y,
 			       (float) area.extent.width, (float) area.extent.height, 0.f, 1.f};
 	vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
@@ -143,7 +145,7 @@ void CellRenderer::createPipelineLayout()
 	pipelineLayout.init(*device);
 }
 
-void CellRenderer::createPipeline()
+void CellRenderer::createPipeline(bp::RenderPass& renderPass)
 {
 	pipeline.addShaderStageInfo(vertexShader.getPipelineShaderStageInfo());
 	pipeline.addShaderStageInfo(geometryShader.getPipelineShaderStageInfo());
@@ -151,5 +153,5 @@ void CellRenderer::createPipeline()
 	pipeline.addVertexBindingDescription({0, sizeof(glm::ivec2), VK_VERTEX_INPUT_RATE_VERTEX});
 	pipeline.addVertexAttributeDescription({0, 0, VK_FORMAT_R32G32_SINT, 0});
 	pipeline.setPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
-	pipeline.init(*device, *renderPass, pipelineLayout);
+	pipeline.init(*device, renderPass, pipelineLayout);
 }
