@@ -59,10 +59,10 @@ int main(int argc, char** argv)
 	VkPhysicalDevice physical = queryDevices(instance, requirements)[0];
 	Device device{physical, requirements};
 
-	Swapchain target;
-	target.setClearEnabled(true);
-	target.setClearValue({0.2f, 0.2f, 0.2f, 1.f});
-	target.init(device, window, WIDTH, HEIGHT, true);
+	Swapchain swapchain;
+	swapchain.setClearEnabled(true);
+	swapchain.setClearValue({0.2f, 0.2f, 0.2f, 1.f});
+	swapchain.init(device, window, WIDTH, HEIGHT, true);
 
 	CellRenderer::Controls controls;
 
@@ -106,32 +106,18 @@ int main(int argc, char** argv)
 		window.setTitle(ss.str());
 	}
 
-	AttachmentSlot colorAttachmentSlot{target.getFormat(), VK_SAMPLE_COUNT_1_BIT,
-					   VK_ATTACHMENT_LOAD_OP_CLEAR,
-					   VK_ATTACHMENT_STORE_OP_STORE,
-					   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-					   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-
 	CellRenderer renderer;
-	renderer.addColorAttachment(colorAttachmentSlot);
-
-	RenderPass renderPass;
-	renderPass.addSubpassGraph(renderer);
-	renderPass.setRenderArea({{}, {WIDTH, HEIGHT}});
-	renderPass.init(device);
-
-	renderer.init(device, controls, {0.f, 0.f}, 8.f, renderPass);
+	renderer.setControls(controls);
+	renderer.init(device, swapchain.getFormat(), WIDTH, HEIGHT);
+	renderer.updateCells(grids[0]);
 
 	Framebuffer framebuffer{};
-	framebuffer.setAttachment(colorAttachmentSlot, target);
-	framebuffer.init(renderPass, WIDTH, HEIGHT);
+	framebuffer.setAttachment(renderer.getColorAttachmentSlot(), swapchain);
+	framebuffer.init(renderer.getRenderPass(), WIDTH, HEIGHT);
 
-	connect(window.resizeEvent, target, &Swapchain::resize);
-	connect(target.resizeEvent, [&](uint32_t w, uint32_t h){
-		renderer.resize(w, h);
-		renderPass.setRenderArea({{}, {w, h}});
-		framebuffer.resize(w, h);
-	});
+	connect(window.resizeEvent, swapchain, &Swapchain::resize);
+	connect(swapchain.resizeEvent, renderer, &CellRenderer::resize);
+	connect(swapchain.resizeEvent, framebuffer, &Framebuffer::resize);
 
 	Queue& graphicsQueue = device.getGraphicsQueue();
 	CommandPool cmdPool{graphicsQueue};
@@ -155,13 +141,13 @@ int main(int argc, char** argv)
 		renderer.updateCells(grids[i0]);
 
 		vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
-		renderPass.render(framebuffer, cmdBuffer);
+		renderer.render(framebuffer, cmdBuffer);
 		vkEndCommandBuffer(cmdBuffer);
 		graphicsQueue.submit(
-			{{target.getImageAvailableSemaphore(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT}},
+			{{swapchain.getImageAvailableSemaphore(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT}},
 			{cmdBuffer}, {renderCompleteSem});
 		graphicsQueue.waitIdle();
-		target.present(renderCompleteSem);
+		swapchain.present(renderCompleteSem);
 
 		bpView::pollEvents();
 		window.handleEvents();
