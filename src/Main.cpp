@@ -60,7 +60,6 @@ int main(int argc, char** argv)
 	Device device{physical, requirements};
 
 	Swapchain swapchain;
-	swapchain.setClearEnabled(true);
 	swapchain.setClearValue({0.2f, 0.2f, 0.2f, 1.f});
 	swapchain.init(device, window, WIDTH, HEIGHT, true);
 
